@@ -1,25 +1,68 @@
 import { createContext, useContext, useState, useEffect } from 'react';
-import initialProducts, { CATEGORIES } from '../data/products';
+import { CATEGORIES } from '../data/products';
 
 const ProductContext = createContext();
 
-export function ProductProvider({ children }) {
-  const [products, setProducts] = useState(() => {
-    const saved = localStorage.getItem('nyra_products_v2');
-    if (saved) {
-      const parsed = JSON.parse(saved);
-      // Migration: if old format (has 'price' but no 'newPrice'), convert
-      if (parsed.length > 0 && parsed[0].price !== undefined && parsed[0].newPrice === undefined) {
-        return initialProducts;
-      }
-      return parsed;
-    }
-    return initialProducts;
-  });
+const STORAGE_KEY = 'nyra_products_v3';
 
+/**
+ * Validates that a product has all required fields to be displayed.
+ * Products missing name, images, or price are filtered out on the public site.
+ */
+const isValidProduct = (product) => {
+  if (!product) return false;
+  if (!product.name || !product.name.trim()) return false;
+  if (!product.newPrice && product.newPrice !== 0) return false;
+  if (Number(product.newPrice) <= 0) return false;
+  // Must have at least one valid image
+  const images = product.images || [];
+  const hasValidImage = images.some(img => img && img.trim().length > 0);
+  if (!hasValidImage) return false;
+  return true;
+};
+
+export function ProductProvider({ children }) {
+  const [products, setProducts] = useState([]);
+  const [isLoading, setIsLoading] = useState(true);
+
+  // Load products from localStorage on mount (admin-uploaded only)
   useEffect(() => {
-    localStorage.setItem('nyra_products_v2', JSON.stringify(products));
-  }, [products]);
+    try {
+      const saved = localStorage.getItem(STORAGE_KEY);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed)) {
+          setProducts(parsed);
+        }
+      }
+      // Also migrate from old key if v3 is empty
+      if (!saved) {
+        const oldSaved = localStorage.getItem('nyra_products_v2');
+        if (oldSaved) {
+          const oldParsed = JSON.parse(oldSaved);
+          if (Array.isArray(oldParsed)) {
+            // Only keep admin-uploaded products (those with base64 images or valid data)
+            const adminProducts = oldParsed.filter(p =>
+              isValidProduct(p) && p.id > 1000 // admin-added products use Date.now() as ID (large numbers)
+            );
+            setProducts(adminProducts);
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(adminProducts));
+          }
+        }
+      }
+    } catch (e) {
+      console.error('Failed to load products from storage:', e);
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
+
+  // Persist products to localStorage whenever they change
+  useEffect(() => {
+    if (!isLoading) {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(products));
+    }
+  }, [products, isLoading]);
 
   const getProduct = (id) => products.find(p => p.id === Number(id));
 
@@ -33,7 +76,8 @@ export function ProductProvider({ children }) {
     const newProduct = {
       ...product,
       id: Date.now(),
-      status: product.status || 'available'
+      status: product.status || 'available',
+      createdAt: new Date().toISOString()
     };
     setProducts(prev => [newProduct, ...prev]);
     return newProduct;
@@ -41,7 +85,7 @@ export function ProductProvider({ children }) {
 
   const editProduct = (id, updates) => {
     setProducts(prev =>
-      prev.map(p => (p.id === Number(id) ? { ...p, ...updates } : p))
+      prev.map(p => (p.id === Number(id) ? { ...p, ...updates, updatedAt: new Date().toISOString() } : p))
     );
   };
 
@@ -49,10 +93,21 @@ export function ProductProvider({ children }) {
     setProducts(prev => prev.filter(p => p.id !== Number(id)));
   };
 
-  const getAvailableProducts = () => products.filter(p => p.status !== 'confirmed');
+  /**
+   * Returns only validated, non-confirmed products for public display.
+   * - Filters out confirmed (sold out) products
+   * - Filters out incomplete/invalid products
+   */
+  const getAvailableProducts = () =>
+    products.filter(p => p.status !== 'confirmed' && isValidProduct(p));
+
+  /**
+   * Returns all products (including confirmed) for admin panel.
+   */
+  const getAllProducts = () => products;
 
   const getCategories = () => {
-    const cats = [...new Set([...CATEGORIES, ...products.map(p => p.category)])];
+    const cats = [...new Set([...CATEGORIES, ...products.map(p => p.category).filter(Boolean)])];
     return ['All', ...cats];
   };
 
@@ -66,7 +121,10 @@ export function ProductProvider({ children }) {
       editProduct,
       deleteProduct,
       getAvailableProducts,
+      getAllProducts,
       getCategories,
+      isLoading,
+      isValidProduct,
       CATEGORIES
     }}>
       {children}

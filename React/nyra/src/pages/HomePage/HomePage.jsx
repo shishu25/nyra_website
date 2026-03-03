@@ -4,7 +4,7 @@ import { useProducts } from '../../context/ProductContext';
 import './HomePage.css';
 
 export default function HomePage() {
-  const { getAvailableProducts, getCategories } = useProducts();
+  const { getAvailableProducts, getCategories, isLoading } = useProducts();
 
   return (
     <div className="home-page">
@@ -14,6 +14,7 @@ export default function HomePage() {
         categories={getCategories()}
         title="Our Collection"
         subtitle="Handpicked dresses curated for elegance and style"
+        isLoading={isLoading}
       />
 
       {/* Features Section */}

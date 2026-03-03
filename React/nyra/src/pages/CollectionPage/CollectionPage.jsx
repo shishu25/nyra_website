@@ -3,7 +3,7 @@ import { useProducts } from '../../context/ProductContext';
 import './CollectionPage.css';
 
 export default function CollectionPage() {
-  const { getAvailableProducts, getCategories } = useProducts();
+  const { getAvailableProducts, getCategories, isLoading } = useProducts();
 
   return (
     <div className="collection-page">
@@ -14,6 +14,7 @@ export default function CollectionPage() {
       <ProductGrid
         products={getAvailableProducts()}
         categories={getCategories()}
+        isLoading={isLoading}
       />
     </div>
   );

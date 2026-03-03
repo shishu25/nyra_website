@@ -677,6 +677,11 @@
   color: #c0392b;
 }
 
+.df-upload-zone.df-upload-error {
+  border-color: #e74c3c;
+  background: rgba(231, 76, 60, 0.04);
+}
+
 .df-media-preview {
   display: flex;
   flex-wrap: wrap;

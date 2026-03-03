@@ -2,7 +2,23 @@ import { useState } from 'react';
 import ProductCard from '../ProductCard/ProductCard';
 import './ProductGrid.css';
 
-export default function ProductGrid({ products, categories, title, subtitle }) {
+/* ── Skeleton card shown while loading ── */
+function SkeletonCard() {
+  return (
+    <div className="skeleton-card">
+      <div className="skeleton-image shimmer" />
+      <div className="skeleton-body">
+        <div className="skeleton-line skeleton-title shimmer" />
+        <div className="skeleton-row">
+          <div className="skeleton-line skeleton-price shimmer" />
+          <div className="skeleton-line skeleton-btn shimmer" />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export default function ProductGrid({ products, categories, title, subtitle, isLoading }) {
   const [activeCategory, setActiveCategory] = useState('All');
   const [searchQuery, setSearchQuery] = useState('');
 
@@ -48,9 +64,27 @@ export default function ProductGrid({ products, categories, title, subtitle }) {
           </div>
         </div>
 
-        {filtered.length === 0 ? (
-          <div className="no-results">
-            <p>No dresses found. Try a different search or category.</p>
+        {/* Loading state */}
+        {isLoading ? (
+          <div className="product-grid">
+            {Array.from({ length: 6 }).map((_, i) => (
+              <SkeletonCard key={i} />
+            ))}
+          </div>
+        ) : filtered.length === 0 ? (
+          /* Empty state */
+          <div className="empty-products-state">
+            <div className="empty-products-icon">👗</div>
+            <h3 className="empty-products-title">
+              {products.length === 0
+                ? 'No Products Available Yet'
+                : 'No Matching Products'}
+            </h3>
+            <p className="empty-products-text">
+              {products.length === 0
+                ? 'Our collection is being updated. Please check back soon!'
+                : 'Try a different search term or category.'}
+            </p>
           </div>
         ) : (
           <div className="product-grid">

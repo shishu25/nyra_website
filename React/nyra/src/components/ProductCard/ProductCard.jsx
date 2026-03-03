@@ -15,6 +15,9 @@ export default function ProductCard({ product }) {
   const displayOldPrice = oldPrice ?? null;
   const displayImage = images?.[0] ?? product.image ?? '';
 
+  // Don't render if product has no valid image or name
+  if (!name || !displayImage) return null;
+
   const inCart = isInCart(id);
   const inWishlist = isInWishlist(id);
   const isAvailable = status === 'available';

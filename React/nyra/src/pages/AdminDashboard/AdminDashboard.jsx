@@ -113,6 +113,7 @@ export default function AdminDashboard() {
     if (!dressForm.name.trim()) e.name = 'Name is required';
     if (!dressForm.newPrice || Number(dressForm.newPrice) <= 0) e.newPrice = 'Enter a valid new price';
     if (!dressForm.description.trim()) e.description = 'Description is required';
+    if (uploadedImages.length === 0) e.images = 'At least one image is required';
     return e;
   };
 
@@ -561,11 +562,12 @@ export default function AdminDashboard() {
               {/* Images Upload */}
               <div className="df-group">
                 <label><FiImage style={{ marginRight: 6 }} />Upload Images (up to 5)</label>
-                <div className="df-upload-zone" onClick={() => imageInputRef.current?.click()}>
+                <div className={`df-upload-zone ${dressErrors.images ? 'df-upload-error' : ''}`} onClick={() => imageInputRef.current?.click()}>
                   <FiUpload size={20} />
                   <span>Click to select images</span>
                   <span className="df-hint">JPG, PNG, WebP, GIF — max 5MB each</span>
                 </div>
+                {dressErrors.images && <span className="df-err-msg">{dressErrors.images}</span>}
                 <input
                   ref={imageInputRef}
                   type="file"
