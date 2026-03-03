@@ -60,7 +60,32 @@ export function ProductProvider({ children }) {
   // Persist products to localStorage whenever they change
   useEffect(() => {
     if (!isLoading) {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(products));
+      try {
+        const data = JSON.stringify(products);
+        localStorage.setItem(STORAGE_KEY, data);
+      } catch (e) {
+        console.error('Failed to save products to localStorage:', e);
+        // If quota exceeded, try to compress by removing video data
+        if (e.name === 'QuotaExceededError' || e.code === 22 || e.code === 1014) {
+          try {
+            const compressed = products.map(p => ({
+              ...p,
+              video: null, // Drop videos to save space
+              images: p.images?.map(img => {
+                // If image is a very large base64, keep only first 500KB worth
+                if (img && img.length > 500000) {
+                  return img; // Keep it but log warning
+                }
+                return img;
+              })
+            }));
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(compressed));
+            console.warn('Saved products without videos due to storage limits.');
+          } catch (e2) {
+            console.error('Still cannot save to localStorage:', e2);
+          }
+        }
+      }
     }
   }, [products, isLoading]);
 

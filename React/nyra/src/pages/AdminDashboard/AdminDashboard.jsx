@@ -13,7 +13,7 @@ import './AdminDashboard.css';
 
 /* ── File size limits ── */
 const MAX_IMAGE_SIZE = 5 * 1024 * 1024; // 5MB per image
-const MAX_VIDEO_SIZE = 30 * 1024 * 1024; // 30MB per video
+const MAX_VIDEO_SIZE = 2 * 1024 * 1024; // 2MB per video (stored in localStorage, must be small)
 const ALLOWED_IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
 const ALLOWED_VIDEO_TYPES = ['video/mp4', 'video/webm', 'video/ogg'];
 
@@ -122,6 +122,34 @@ export default function AdminDashboard() {
     if (dressErrors[field]) setDressErrors(prev => ({ ...prev, [field]: '' }));
   };
 
+  /* ── Compress image via canvas ── */
+  const compressImage = (file, maxWidth = 800, quality = 0.7) => {
+    return new Promise((resolve) => {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const img = new Image();
+        img.onload = () => {
+          const canvas = document.createElement('canvas');
+          let { width, height } = img;
+
+          if (width > maxWidth) {
+            height = (height * maxWidth) / width;
+            width = maxWidth;
+          }
+
+          canvas.width = width;
+          canvas.height = height;
+          const ctx = canvas.getContext('2d');
+          ctx.drawImage(img, 0, 0, width, height);
+          const compressed = canvas.toDataURL('image/jpeg', quality);
+          resolve(compressed);
+        };
+        img.src = e.target.result;
+      };
+      reader.readAsDataURL(file);
+    });
+  };
+
   /* ── Image file handler ── */
   const handleImageUpload = (e) => {
     const files = Array.from(e.target.files);
@@ -130,7 +158,7 @@ export default function AdminDashboard() {
       return;
     }
 
-    files.forEach(file => {
+    files.forEach(async (file) => {
       if (!ALLOWED_IMAGE_TYPES.includes(file.type)) {
         toast.error(`"${file.name}" is not a supported image format`);
         return;
@@ -139,14 +167,17 @@ export default function AdminDashboard() {
         toast.error(`"${file.name}" exceeds 5MB limit`);
         return;
       }
-      const reader = new FileReader();
-      reader.onload = (ev) => {
+
+      try {
+        const compressed = await compressImage(file);
         setUploadedImages(prev => {
           if (prev.length >= 5) return prev;
-          return [...prev, ev.target.result];
+          return [...prev, compressed];
         });
-      };
-      reader.readAsDataURL(file);
+      } catch (err) {
+        console.error('Image compression failed:', err);
+        toast.error(`Failed to process "${file.name}"`);
+      }
     });
     // Reset input so same file can be selected again
     e.target.value = '';
@@ -166,7 +197,7 @@ export default function AdminDashboard() {
       return;
     }
     if (file.size > MAX_VIDEO_SIZE) {
-      toast.error('Video must be under 30MB');
+      toast.error('Video must be under 2MB (data is stored locally)');
       return;
     }
 
@@ -440,14 +471,24 @@ export default function AdminDashboard() {
                   </tr>
                 </thead>
                 <tbody>
-                  {products.map(p => {
-                    const img = p.images?.[0] ?? p.image;
-                    const oPrice = p.oldPrice ?? p.price ?? 0;
-                    const nPrice = p.newPrice ?? p.price ?? 0;
+                  {products.length === 0 ? (
+                    <tr>
+                      <td colSpan="7" style={{ textAlign: 'center', padding: '40px 20px', color: '#6b7280' }}>
+                        No dresses added yet. Click "Add Dress" to get started.
+                      </td>
+                    </tr>
+                  ) : products.map(p => {
+                    const img = p.images?.[0] ?? p.image ?? '';
+                    const oPrice = Number(p.oldPrice) || Number(p.price) || 0;
+                    const nPrice = Number(p.newPrice) || Number(p.price) || 0;
                     return (
                       <tr key={p.id}>
                         <td>
-                          <img src={img} alt={p.name} className="table-thumb" />
+                          {img ? (
+                            <img src={img} alt={p.name} className="table-thumb" />
+                          ) : (
+                            <div className="table-thumb-placeholder">No Image</div>
+                          )}
                         </td>
                         <td className="table-name">{p.name}</td>
                         <td>{p.category}</td>
@@ -603,7 +644,7 @@ export default function AdminDashboard() {
                 <div className="df-upload-zone" onClick={() => videoInputRef.current?.click()}>
                   <FiUpload size={20} />
                   <span>{uploadedVideo ? 'Replace video' : 'Click to select video'}</span>
-                  <span className="df-hint">MP4, WebM, OGG — max 30MB</span>
+                  <span className="df-hint">MP4, WebM, OGG — max 2MB</span>
                 </div>
                 <input
                   ref={videoInputRef}
