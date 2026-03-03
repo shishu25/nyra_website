@@ -13,7 +13,7 @@ import './AdminDashboard.css';
 
 /* ── File size limits ── */
 const MAX_IMAGE_SIZE = 5 * 1024 * 1024; // 5MB per image
-const MAX_VIDEO_SIZE = 2 * 1024 * 1024; // 2MB per video (stored in localStorage, must be small)
+const MAX_VIDEO_SIZE = 30 * 1024 * 1024; // 30MB per video (now stored in Firebase Storage)
 const ALLOWED_IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
 const ALLOWED_VIDEO_TYPES = ['video/mp4', 'video/webm', 'video/ogg'];
 
@@ -47,6 +47,7 @@ export default function AdminDashboard() {
   const [dressForm, setDressForm] = useState({ ...emptyDressForm });
   const [editingId, setEditingId] = useState(null);
   const [dressErrors, setDressErrors] = useState({});
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   /* ── File upload state ── */
   const [uploadedImages, setUploadedImages] = useState([]); // array of base64 data URLs
@@ -60,21 +61,21 @@ export default function AdminDashboard() {
     navigate('/admin/login', { replace: true });
   };
 
-  const handleConfirm = (booking) => {
-    updateBookingStatus(booking.id, 'confirmed');
-    updateProductStatus(booking.productId, 'confirmed');
+  const handleConfirm = async (booking) => {
+    await updateBookingStatus(booking.id, 'confirmed');
+    await updateProductStatus(booking.productId, 'confirmed');
     toast.success(`Booking for "${booking.productName}" confirmed!`);
   };
 
-  const handleReject = (booking) => {
-    updateBookingStatus(booking.id, 'rejected');
-    updateProductStatus(booking.productId, 'available');
+  const handleReject = async (booking) => {
+    await updateBookingStatus(booking.id, 'rejected');
+    await updateProductStatus(booking.productId, 'available');
     toast.success(`Booking rejected. "${booking.productName}" is now available again.`);
   };
 
-  const handleDeleteBooking = (booking) => {
+  const handleDeleteBooking = async (booking) => {
     if (window.confirm('Are you sure you want to delete this booking record?')) {
-      deleteBooking(booking.id);
+      await deleteBooking(booking.id);
       toast.success('Booking record deleted.');
     }
   };
@@ -197,7 +198,7 @@ export default function AdminDashboard() {
       return;
     }
     if (file.size > MAX_VIDEO_SIZE) {
-      toast.error('Video must be under 2MB (data is stored locally)');
+      toast.error('Video must be under 30MB');
       return;
     }
 
@@ -213,12 +214,14 @@ export default function AdminDashboard() {
     setUploadedVideo(null);
   };
 
-  const handleDressSubmit = () => {
+  const handleDressSubmit = async () => {
     const errs = validateDressForm();
     if (Object.keys(errs).length > 0) {
       setDressErrors(errs);
       return;
     }
+
+    setIsSubmitting(true);
 
     const payload = {
       name: dressForm.name.trim(),
@@ -231,21 +234,31 @@ export default function AdminDashboard() {
       status: dressForm.status
     };
 
-    if (dressModalMode === 'add') {
-      addProduct(payload);
-      toast.success(`"${payload.name}" added successfully!`);
-    } else {
-      editProduct(editingId, payload);
-      toast.success(`"${payload.name}" updated successfully!`);
+    try {
+      if (dressModalMode === 'add') {
+        await addProduct(payload);
+        toast.success(`"${payload.name}" added successfully!`);
+      } else {
+        await editProduct(editingId, payload);
+        toast.success(`"${payload.name}" updated successfully!`);
+      }
+      setShowDressModal(false);
+    } catch (err) {
+      console.error('Error saving product:', err);
+      toast.error('Failed to save product. Please try again.');
+    } finally {
+      setIsSubmitting(false);
     }
-
-    setShowDressModal(false);
   };
 
-  const handleDeleteDress = (product) => {
+  const handleDeleteDress = async (product) => {
     if (window.confirm(`Are you sure you want to delete "${product.name}"? This cannot be undone.`)) {
-      deleteProduct(product.id);
-      toast.success(`"${product.name}" deleted.`);
+      try {
+        await deleteProduct(product.id);
+        toast.success(`"${product.name}" deleted.`);
+      } catch (err) {
+        toast.error('Failed to delete product.');
+      }
     }
   };
 
@@ -644,7 +657,7 @@ export default function AdminDashboard() {
                 <div className="df-upload-zone" onClick={() => videoInputRef.current?.click()}>
                   <FiUpload size={20} />
                   <span>{uploadedVideo ? 'Replace video' : 'Click to select video'}</span>
-                  <span className="df-hint">MP4, WebM, OGG — max 2MB</span>
+                  <span className="df-hint">MP4, WebM, OGG — max 30MB</span>
                 </div>
                 <input
                   ref={videoInputRef}
@@ -682,8 +695,10 @@ export default function AdminDashboard() {
                 </select>
               </div>
 
-              <button className="df-submit" onClick={handleDressSubmit}>
-                {dressModalMode === 'add' ? 'Add Dress' : 'Save Changes'}
+              <button className="df-submit" onClick={handleDressSubmit} disabled={isSubmitting}>
+                {isSubmitting
+                  ? 'Uploading...'
+                  : dressModalMode === 'add' ? 'Add Dress' : 'Save Changes'}
               </button>
             </div>
           </div>

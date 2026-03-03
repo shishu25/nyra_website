@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { FiX, FiShoppingCart, FiCheck } from 'react-icons/fi';
 import './CheckoutModal.css';
 
-export default function CheckoutModal({ items, onClose, onComplete }) {
+export default function CheckoutModal({ items, deliveryZone, deliveryCost, onClose, onComplete }) {
   const [step, setStep] = useState('confirm'); // 'confirm' | 'contact'
   const [formData, setFormData] = useState({
     customerName: '',
@@ -13,7 +13,8 @@ export default function CheckoutModal({ items, onClose, onComplete }) {
   const [errors, setErrors] = useState({});
   const [submitting, setSubmitting] = useState(false);
 
-  const total = items.reduce((s, i) => s + (i.newPrice || 0), 0);
+  const itemsTotal = items.reduce((s, i) => s + (i.newPrice || 0), 0);
+  const grandTotal = itemsTotal + (deliveryCost || 0);
 
   const validate = () => {
     const e = {};
@@ -68,7 +69,11 @@ export default function CheckoutModal({ items, onClose, onComplete }) {
             <h2>Do you want to buy these products?</h2>
             <div className="checkout-summary-mini">
               <p>{items.length} dress{items.length !== 1 ? 'es' : ''}</p>
-              <p className="checkout-total-mini">৳{total.toLocaleString()}</p>
+              <p className="checkout-subtotal">Subtotal: ৳{itemsTotal.toLocaleString()}</p>
+              <p className="checkout-delivery-info">
+                Delivery ({deliveryZone === 'inside' ? 'Inside Dhaka' : 'Outside Dhaka'}): ৳{deliveryCost}
+              </p>
+              <p className="checkout-total-mini">Total: ৳{grandTotal.toLocaleString()}</p>
             </div>
             <div className="checkout-confirm-actions">
               <button className="checkout-yes" onClick={() => setStep('contact')}>

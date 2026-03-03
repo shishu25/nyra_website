@@ -27,11 +27,11 @@ export function CartProvider({ children }) {
   };
 
   const removeFromCart = (productId) => {
-    setCartItems(prev => prev.filter(item => item.id !== Number(productId)));
+    setCartItems(prev => prev.filter(item => String(item.id) !== String(productId)));
   };
 
   const isInCart = (productId) => {
-    return cartItems.some(item => item.id === Number(productId));
+    return cartItems.some(item => String(item.id) === String(productId));
   };
 
   const clearCart = () => setCartItems([]);

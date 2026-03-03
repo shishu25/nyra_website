@@ -1,134 +1,170 @@
 import { createContext, useContext, useState, useEffect } from 'react';
+import {
+  collection, addDoc, updateDoc, deleteDoc, doc,
+  onSnapshot, query, orderBy
+} from 'firebase/firestore';
+import {
+  ref, uploadString, getDownloadURL, deleteObject
+} from 'firebase/storage';
+import { db, storage } from '../firebase';
 import { CATEGORIES } from '../data/products';
 
 const ProductContext = createContext();
 
-const STORAGE_KEY = 'nyra_products_v3';
-
 /**
  * Validates that a product has all required fields to be displayed.
- * Products missing name, images, or price are filtered out on the public site.
  */
 const isValidProduct = (product) => {
   if (!product) return false;
   if (!product.name || !product.name.trim()) return false;
   if (!product.newPrice && product.newPrice !== 0) return false;
   if (Number(product.newPrice) <= 0) return false;
-  // Must have at least one valid image
   const images = product.images || [];
   const hasValidImage = images.some(img => img && img.trim().length > 0);
   if (!hasValidImage) return false;
   return true;
 };
 
+/**
+ * Upload a base64 image to Firebase Storage and return the download URL.
+ */
+const uploadImageToStorage = async (base64String, path) => {
+  const storageRef = ref(storage, path);
+  await uploadString(storageRef, base64String, 'data_url');
+  return getDownloadURL(storageRef);
+};
+
+/**
+ * Upload multiple base64 images and return array of download URLs.
+ */
+const uploadImages = async (images, productId) => {
+  const urls = [];
+  for (let i = 0; i < images.length; i++) {
+    const img = images[i];
+    // If already a URL (not base64), keep it
+    if (img && !img.startsWith('data:')) {
+      urls.push(img);
+      continue;
+    }
+    if (img && img.startsWith('data:')) {
+      const url = await uploadImageToStorage(img, `products/${productId}/image_${i}_${Date.now()}`);
+      urls.push(url);
+    }
+  }
+  return urls;
+};
+
+/**
+ * Upload a base64 video to Firebase Storage and return the download URL.
+ */
+const uploadVideo = async (base64Video, productId) => {
+  if (!base64Video) return null;
+  if (!base64Video.startsWith('data:')) return base64Video; // Already a URL
+  const storageRef = ref(storage, `products/${productId}/video_${Date.now()}`);
+  await uploadString(storageRef, base64Video, 'data_url');
+  return getDownloadURL(storageRef);
+};
+
 export function ProductProvider({ children }) {
   const [products, setProducts] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
 
-  // Load products from localStorage on mount (admin-uploaded only)
+  // Real-time listener to Firestore — all users see the same data
   useEffect(() => {
-    try {
-      const saved = localStorage.getItem(STORAGE_KEY);
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed)) {
-          setProducts(parsed);
-        }
-      }
-      // Also migrate from old key if v3 is empty
-      if (!saved) {
-        const oldSaved = localStorage.getItem('nyra_products_v2');
-        if (oldSaved) {
-          const oldParsed = JSON.parse(oldSaved);
-          if (Array.isArray(oldParsed)) {
-            // Only keep admin-uploaded products (those with base64 images or valid data)
-            const adminProducts = oldParsed.filter(p =>
-              isValidProduct(p) && p.id > 1000 // admin-added products use Date.now() as ID (large numbers)
-            );
-            setProducts(adminProducts);
-            localStorage.setItem(STORAGE_KEY, JSON.stringify(adminProducts));
-          }
-        }
-      }
-    } catch (e) {
-      console.error('Failed to load products from storage:', e);
-    } finally {
+    const q = query(collection(db, 'products'), orderBy('createdAt', 'desc'));
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const prods = snapshot.docs.map(d => ({
+        ...d.data(),
+        id: d.id
+      }));
+      setProducts(prods);
       setIsLoading(false);
-    }
+    }, (error) => {
+      console.error('Error fetching products:', error);
+      setIsLoading(false);
+    });
+
+    return () => unsubscribe();
   }, []);
 
-  // Persist products to localStorage whenever they change
-  useEffect(() => {
-    if (!isLoading) {
-      try {
-        const data = JSON.stringify(products);
-        localStorage.setItem(STORAGE_KEY, data);
-      } catch (e) {
-        console.error('Failed to save products to localStorage:', e);
-        // If quota exceeded, try to compress by removing video data
-        if (e.name === 'QuotaExceededError' || e.code === 22 || e.code === 1014) {
-          try {
-            const compressed = products.map(p => ({
-              ...p,
-              video: null, // Drop videos to save space
-              images: p.images?.map(img => {
-                // If image is a very large base64, keep only first 500KB worth
-                if (img && img.length > 500000) {
-                  return img; // Keep it but log warning
-                }
-                return img;
-              })
-            }));
-            localStorage.setItem(STORAGE_KEY, JSON.stringify(compressed));
-            console.warn('Saved products without videos due to storage limits.');
-          } catch (e2) {
-            console.error('Still cannot save to localStorage:', e2);
-          }
-        }
-      }
+  const getProduct = (id) => products.find(p => p.id === String(id));
+
+  const updateProductStatus = async (id, status) => {
+    try {
+      await updateDoc(doc(db, 'products', String(id)), { status });
+    } catch (e) {
+      console.error('Error updating product status:', e);
     }
-  }, [products, isLoading]);
-
-  const getProduct = (id) => products.find(p => p.id === Number(id));
-
-  const updateProductStatus = (id, status) => {
-    setProducts(prev =>
-      prev.map(p => (p.id === Number(id) ? { ...p, status } : p))
-    );
   };
 
-  const addProduct = (product) => {
-    const newProduct = {
-      ...product,
-      id: Date.now(),
-      status: product.status || 'available',
-      createdAt: new Date().toISOString()
-    };
-    setProducts(prev => [newProduct, ...prev]);
-    return newProduct;
+  const addProduct = async (product) => {
+    try {
+      const productId = `prod_${Date.now()}`;
+      // Upload images to Firebase Storage
+      const imageUrls = await uploadImages(product.images || [], productId);
+      // Upload video if present
+      const videoUrl = await uploadVideo(product.video, productId);
+
+      const newProduct = {
+        name: product.name,
+        category: product.category,
+        oldPrice: Number(product.oldPrice) || 0,
+        newPrice: Number(product.newPrice),
+        description: product.description,
+        images: imageUrls,
+        video: videoUrl,
+        status: product.status || 'available',
+        createdAt: new Date().toISOString()
+      };
+
+      const docRef = await addDoc(collection(db, 'products'), newProduct);
+      return { ...newProduct, id: docRef.id };
+    } catch (e) {
+      console.error('Error adding product:', e);
+      throw e;
+    }
   };
 
-  const editProduct = (id, updates) => {
-    setProducts(prev =>
-      prev.map(p => (p.id === Number(id) ? { ...p, ...updates, updatedAt: new Date().toISOString() } : p))
-    );
+  const editProduct = async (id, updates) => {
+    try {
+      const productId = String(id);
+      let imageUrls = updates.images || [];
+      let videoUrl = updates.video || null;
+
+      // Upload any new base64 images
+      const hasNewImages = imageUrls.some(img => img && img.startsWith('data:'));
+      if (hasNewImages) {
+        imageUrls = await uploadImages(imageUrls, productId);
+      }
+
+      // Upload new video if base64
+      if (videoUrl && videoUrl.startsWith('data:')) {
+        videoUrl = await uploadVideo(videoUrl, productId);
+      }
+
+      await updateDoc(doc(db, 'products', productId), {
+        ...updates,
+        images: imageUrls,
+        video: videoUrl,
+        updatedAt: new Date().toISOString()
+      });
+    } catch (e) {
+      console.error('Error editing product:', e);
+      throw e;
+    }
   };
 
-  const deleteProduct = (id) => {
-    setProducts(prev => prev.filter(p => p.id !== Number(id)));
+  const deleteProduct = async (id) => {
+    try {
+      await deleteDoc(doc(db, 'products', String(id)));
+    } catch (e) {
+      console.error('Error deleting product:', e);
+    }
   };
 
-  /**
-   * Returns only validated, non-confirmed products for public display.
-   * - Filters out confirmed (sold out) products
-   * - Filters out incomplete/invalid products
-   */
   const getAvailableProducts = () =>
     products.filter(p => p.status !== 'confirmed' && isValidProduct(p));
 
-  /**
-   * Returns all products (including confirmed) for admin panel.
-   */
   const getAllProducts = () => products;
 
   const getCategories = () => {

@@ -13,6 +13,9 @@ export default function CartPage() {
   const { getProduct, updateProductStatus } = useProducts();
   const { addBooking } = useBookings();
   const [showCheckout, setShowCheckout] = useState(false);
+  const [deliveryZone, setDeliveryZone] = useState('inside'); // 'inside' | 'outside'
+
+  const deliveryCost = deliveryZone === 'inside' ? 60 : 120;
 
   const handleRemove = (item) => {
     removeFromCart(item.id);
@@ -30,28 +33,35 @@ export default function CartPage() {
     return !product || product.status !== 'available';
   });
 
-  const handleCheckoutComplete = (contactInfo) => {
-    // Create bookings for each available item
-    availableItems.forEach(item => {
-      addBooking({
-        productId: item.id,
-        productName: item.name,
-        productPrice: item.newPrice,
-        productImage: item.image,
-        customerName: contactInfo.customerName,
-        phone: contactInfo.phone,
-        email: contactInfo.email || '',
-        address: contactInfo.address
-      });
-      updateProductStatus(item.id, 'pending');
-    });
+  const handleCheckoutComplete = async (contactInfo) => {
+    try {
+      // Create bookings for each available item
+      for (const item of availableItems) {
+        await addBooking({
+          productId: String(item.id),
+          productName: item.name,
+          productPrice: item.newPrice,
+          productImage: item.image,
+          customerName: contactInfo.customerName,
+          phone: contactInfo.phone,
+          email: contactInfo.email || '',
+          address: contactInfo.address,
+          deliveryZone: deliveryZone === 'inside' ? 'Inside Dhaka' : 'Outside Dhaka',
+          deliveryCost: deliveryCost
+        });
+        await updateProductStatus(String(item.id), 'pending');
+      }
 
-    clearCart();
-    setShowCheckout(false);
-    toast.success(
-      'Your order has been placed! The admin will contact you to confirm the ordered products.',
-      { duration: 5000 }
-    );
+      clearCart();
+      setShowCheckout(false);
+      toast.success(
+        'Your order has been placed! The admin will contact you to confirm the ordered products.',
+        { duration: 5000 }
+      );
+    } catch (error) {
+      console.error('Checkout error:', error);
+      toast.error('Something went wrong. Please try again.');
+    }
   };
 
   return (
@@ -125,14 +135,48 @@ export default function CartPage() {
                 <span>Items ({availableItems.length})</span>
                 <span>৳{availableItems.reduce((s, i) => s + i.newPrice, 0).toLocaleString()}</span>
               </div>
+
+              {/* Delivery Options */}
+              <div className="delivery-options">
+                <span className="delivery-label">Delivery Zone</span>
+                <label className={`delivery-option ${deliveryZone === 'inside' ? 'selected' : ''}`}>
+                  <input
+                    type="radio"
+                    name="deliveryZone"
+                    value="inside"
+                    checked={deliveryZone === 'inside'}
+                    onChange={() => setDeliveryZone('inside')}
+                  />
+                  <span className="delivery-radio-mark" />
+                  <span className="delivery-text">
+                    <span className="delivery-name">Inside Dhaka</span>
+                    <span className="delivery-price">৳60</span>
+                  </span>
+                </label>
+                <label className={`delivery-option ${deliveryZone === 'outside' ? 'selected' : ''}`}>
+                  <input
+                    type="radio"
+                    name="deliveryZone"
+                    value="outside"
+                    checked={deliveryZone === 'outside'}
+                    onChange={() => setDeliveryZone('outside')}
+                  />
+                  <span className="delivery-radio-mark" />
+                  <span className="delivery-text">
+                    <span className="delivery-name">Outside Dhaka</span>
+                    <span className="delivery-price">৳120</span>
+                  </span>
+                </label>
+              </div>
+
               <div className="summary-row">
                 <span>Delivery</span>
-                <span className="summary-free">Free</span>
+                <span>৳{deliveryCost}</span>
               </div>
               <div className="summary-divider" />
               <div className="summary-row total">
                 <span>Total</span>
-                <span>৳{availableItems.reduce((s, i) => s + i.newPrice, 0).toLocaleString()}</span>
+                <span>৳{(availableItems.reduce((s, i) => s + i.newPrice, 0) + deliveryCost).toLocaleString()}</span>
               </div>
               <button
                 className="cart-checkout-btn"
@@ -141,7 +185,7 @@ export default function CartPage() {
               >
                 Proceed to Checkout
               </button>
-              <p className="cart-note">No payment required. Pay on delivery.</p>
+              <p className="cart-note">Pay on delivery. No advance payment required.</p>
             </div>
           </div>
         )}
@@ -150,6 +194,8 @@ export default function CartPage() {
       {showCheckout && (
         <CheckoutModal
           items={availableItems}
+          deliveryZone={deliveryZone}
+          deliveryCost={deliveryCost}
           onClose={() => setShowCheckout(false)}
           onComplete={handleCheckoutComplete}
         />

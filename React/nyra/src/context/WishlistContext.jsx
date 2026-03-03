@@ -27,11 +27,11 @@ export function WishlistProvider({ children }) {
   };
 
   const removeFromWishlist = (productId) => {
-    setWishlistItems(prev => prev.filter(item => item.id !== Number(productId)));
+    setWishlistItems(prev => prev.filter(item => String(item.id) !== String(productId)));
   };
 
   const isInWishlist = (productId) => {
-    return wishlistItems.some(item => item.id === Number(productId));
+    return wishlistItems.some(item => String(item.id) === String(productId));
   };
 
   const clearWishlist = () => setWishlistItems([]);

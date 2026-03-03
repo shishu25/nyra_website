@@ -45,7 +45,7 @@ export default function BookingModal({ product, onClose }) {
     }
   };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
     const newErrors = validate();
     if (Object.keys(newErrors).length > 0) {
@@ -55,10 +55,9 @@ export default function BookingModal({ product, onClose }) {
 
     setSubmitting(true);
 
-    // Simulate a brief delay
-    setTimeout(() => {
-      addBooking({
-        productId: product.id,
+    try {
+      await addBooking({
+        productId: String(product.id),
         productName: product.name,
         productPrice: displayPrice,
         productImage: displayImage,
@@ -68,15 +67,19 @@ export default function BookingModal({ product, onClose }) {
         address: formData.address.trim()
       });
 
-      updateProductStatus(product.id, 'pending');
+      await updateProductStatus(product.id, 'pending');
 
       toast.success('Booking submitted successfully! We will contact you shortly.', {
         duration: 4000
       });
 
-      setSubmitting(false);
       onClose();
-    }, 800);
+    } catch (err) {
+      console.error('Booking failed:', err);
+      toast.error('Failed to submit booking. Please try again.');
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   return (

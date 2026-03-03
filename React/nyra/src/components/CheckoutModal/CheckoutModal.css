@@ -104,6 +104,19 @@
   font-size: 22px !important;
   font-weight: 700 !important;
   color: #c0392b !important;
+  margin-top: 6px !important;
+  padding-top: 8px;
+  border-top: 1px solid #e5e7eb;
+}
+
+.checkout-subtotal {
+  font-size: 13px !important;
+  color: #6b7280 !important;
+}
+
+.checkout-delivery-info {
+  font-size: 13px !important;
+  color: #6b7280 !important;
 }
 
 .checkout-confirm-actions {
