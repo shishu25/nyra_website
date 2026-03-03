@@ -3,8 +3,8 @@ import { createContext, useContext, useState, useEffect } from 'react';
 const AuthContext = createContext();
 
 const ADMIN_CREDENTIALS = {
-  adminId: '2016306Nyra',
-  password: 'NyraZunnun@1993'
+  adminId: import.meta.env.VITE_ADMIN_ID,
+  password: import.meta.env.VITE_ADMIN_PASSWORD
 };
 
 export function AuthProvider({ children }) {
