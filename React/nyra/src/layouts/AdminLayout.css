@@ -1,0 +1,11 @@
+/* AdminLayout — Isolate admin styles from public site */
+.admin-layout {
+  min-height: 100vh;
+}
+
+/* Reset any public-site styles that could leak in */
+.admin-layout *,
+.admin-layout *::before,
+.admin-layout *::after {
+  box-sizing: border-box;
+}
