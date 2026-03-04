@@ -58,16 +58,28 @@ export function ProductProvider({ children }) {
 
   // Real-time listener to Firestore — all users see the same data
   useEffect(() => {
-    const q = query(collection(db, 'products'), orderBy('createdAt', 'desc'));
-    const unsubscribe = onSnapshot(q, (snapshot) => {
+    console.log('Setting up Firestore listener...'); // Debug log
+    
+    // Try without orderBy first (in case index is missing)
+    const productsRef = collection(db, 'products');
+    
+    const unsubscribe = onSnapshot(productsRef, (snapshot) => {
+      console.log('Firestore snapshot received, docs:', snapshot.docs.length); // Debug log
       const prods = snapshot.docs.map(d => ({
         ...d.data(),
         id: d.id
       }));
+      // Sort on client side
+      prods.sort((a, b) => {
+        const dateA = a.createdAt ? new Date(a.createdAt) : new Date(0);
+        const dateB = b.createdAt ? new Date(b.createdAt) : new Date(0);
+        return dateB - dateA;
+      });
       setProducts(prods);
       setIsLoading(false);
     }, (error) => {
       console.error('Error fetching products:', error);
+      setProducts([]);
       setIsLoading(false);
     });
 
@@ -86,10 +98,16 @@ export function ProductProvider({ children }) {
 
   const addProduct = async (product) => {
     try {
+      console.log('Starting addProduct...'); // Debug log
+      
       // Upload images to Cloudinary
+      console.log('Uploading images to Cloudinary...'); // Debug log
       const imageUrls = await uploadImages(product.images || []);
+      console.log('Images uploaded:', imageUrls); // Debug log
+      
       // Upload video if present
       const videoUrl = await uploadVideo(product.video);
+      console.log('Video uploaded:', videoUrl); // Debug log
 
       const newProduct = {
         name: product.name,
@@ -103,7 +121,10 @@ export function ProductProvider({ children }) {
         createdAt: new Date().toISOString()
       };
 
+      console.log('Saving to Firestore:', newProduct); // Debug log
       const docRef = await addDoc(collection(db, 'products'), newProduct);
+      console.log('Product saved with ID:', docRef.id); // Debug log
+      
       return { ...newProduct, id: docRef.id };
     } catch (e) {
       console.error('Error adding product:', e);
