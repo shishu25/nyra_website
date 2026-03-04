@@ -3,10 +3,8 @@ import {
   collection, addDoc, updateDoc, deleteDoc, doc,
   onSnapshot, query, orderBy
 } from 'firebase/firestore';
-import {
-  ref, uploadString, getDownloadURL, deleteObject
-} from 'firebase/storage';
-import { db, storage } from '../firebase';
+import { db } from '../firebase';
+import { uploadToCloudinary, uploadVideoToCloudinary } from '../utils/cloudinary';
 import { CATEGORIES } from '../data/products';
 
 const ProductContext = createContext();
@@ -26,18 +24,9 @@ const isValidProduct = (product) => {
 };
 
 /**
- * Upload a base64 image to Firebase Storage and return the download URL.
+ * Upload multiple base64 images to Cloudinary and return array of URLs.
  */
-const uploadImageToStorage = async (base64String, path) => {
-  const storageRef = ref(storage, path);
-  await uploadString(storageRef, base64String, 'data_url');
-  return getDownloadURL(storageRef);
-};
-
-/**
- * Upload multiple base64 images and return array of download URLs.
- */
-const uploadImages = async (images, productId) => {
+const uploadImages = async (images) => {
   const urls = [];
   for (let i = 0; i < images.length; i++) {
     const img = images[i];
@@ -47,7 +36,7 @@ const uploadImages = async (images, productId) => {
       continue;
     }
     if (img && img.startsWith('data:')) {
-      const url = await uploadImageToStorage(img, `products/${productId}/image_${i}_${Date.now()}`);
+      const url = await uploadToCloudinary(img);
       urls.push(url);
     }
   }
@@ -55,14 +44,12 @@ const uploadImages = async (images, productId) => {
 };
 
 /**
- * Upload a base64 video to Firebase Storage and return the download URL.
+ * Upload a base64 video to Cloudinary and return the URL.
  */
-const uploadVideo = async (base64Video, productId) => {
+const uploadVideo = async (base64Video) => {
   if (!base64Video) return null;
   if (!base64Video.startsWith('data:')) return base64Video; // Already a URL
-  const storageRef = ref(storage, `products/${productId}/video_${Date.now()}`);
-  await uploadString(storageRef, base64Video, 'data_url');
-  return getDownloadURL(storageRef);
+  return uploadVideoToCloudinary(base64Video);
 };
 
 export function ProductProvider({ children }) {
@@ -99,11 +86,10 @@ export function ProductProvider({ children }) {
 
   const addProduct = async (product) => {
     try {
-      const productId = `prod_${Date.now()}`;
-      // Upload images to Firebase Storage
-      const imageUrls = await uploadImages(product.images || [], productId);
+      // Upload images to Cloudinary
+      const imageUrls = await uploadImages(product.images || []);
       // Upload video if present
-      const videoUrl = await uploadVideo(product.video, productId);
+      const videoUrl = await uploadVideo(product.video);
 
       const newProduct = {
         name: product.name,
@@ -134,12 +120,12 @@ export function ProductProvider({ children }) {
       // Upload any new base64 images
       const hasNewImages = imageUrls.some(img => img && img.startsWith('data:'));
       if (hasNewImages) {
-        imageUrls = await uploadImages(imageUrls, productId);
+        imageUrls = await uploadImages(imageUrls);
       }
 
       // Upload new video if base64
       if (videoUrl && videoUrl.startsWith('data:')) {
-        videoUrl = await uploadVideo(videoUrl, productId);
+        videoUrl = await uploadVideo(videoUrl);
       }
 
       await updateDoc(doc(db, 'products', productId), {
