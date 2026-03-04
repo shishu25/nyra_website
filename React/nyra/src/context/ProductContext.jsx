@@ -1,7 +1,7 @@
 import { createContext, useContext, useState, useEffect } from 'react';
 import {
   collection, addDoc, updateDoc, deleteDoc, doc,
-  onSnapshot, query, orderBy
+  onSnapshot
 } from 'firebase/firestore';
 import { db } from '../firebase';
 import { uploadToCloudinary, uploadVideoToCloudinary } from '../utils/cloudinary';
@@ -58,18 +58,16 @@ export function ProductProvider({ children }) {
 
   // Real-time listener to Firestore — all users see the same data
   useEffect(() => {
-    console.log('Setting up Firestore listener...'); // Debug log
-    
-    // Try without orderBy first (in case index is missing)
     const productsRef = collection(db, 'products');
-    
+    let loadingTimer = setTimeout(() => setIsLoading(false), 5000); // Fallback: stop loading after 5s
+
     const unsubscribe = onSnapshot(productsRef, (snapshot) => {
-      console.log('Firestore snapshot received, docs:', snapshot.docs.length); // Debug log
+      clearTimeout(loadingTimer);
       const prods = snapshot.docs.map(d => ({
         ...d.data(),
         id: d.id
       }));
-      // Sort on client side
+      // Sort by createdAt descending
       prods.sort((a, b) => {
         const dateA = a.createdAt ? new Date(a.createdAt) : new Date(0);
         const dateB = b.createdAt ? new Date(b.createdAt) : new Date(0);
@@ -78,12 +76,16 @@ export function ProductProvider({ children }) {
       setProducts(prods);
       setIsLoading(false);
     }, (error) => {
-      console.error('Error fetching products:', error);
+      clearTimeout(loadingTimer);
+      console.error('Firestore error:', error);
       setProducts([]);
       setIsLoading(false);
     });
 
-    return () => unsubscribe();
+    return () => {
+      clearTimeout(loadingTimer);
+      unsubscribe();
+    };
   }, []);
 
   const getProduct = (id) => products.find(p => p.id === String(id));
@@ -97,76 +99,70 @@ export function ProductProvider({ children }) {
   };
 
   const addProduct = async (product) => {
-    try {
-      console.log('Starting addProduct...'); // Debug log
-      
-      // Upload images to Cloudinary
-      console.log('Uploading images to Cloudinary...'); // Debug log
-      const imageUrls = await uploadImages(product.images || []);
-      console.log('Images uploaded:', imageUrls); // Debug log
-      
-      // Upload video if present
-      const videoUrl = await uploadVideo(product.video);
-      console.log('Video uploaded:', videoUrl); // Debug log
+    // Upload images to Cloudinary
+    const imageUrls = await uploadImages(product.images || []);
+    // Upload video if present
+    const videoUrl = await uploadVideo(product.video);
 
-      const newProduct = {
-        name: product.name,
-        category: product.category,
-        oldPrice: Number(product.oldPrice) || 0,
-        newPrice: Number(product.newPrice),
-        description: product.description,
-        images: imageUrls,
-        video: videoUrl,
-        status: product.status || 'available',
-        createdAt: new Date().toISOString()
-      };
+    const newProduct = {
+      name: product.name,
+      category: product.category,
+      oldPrice: Number(product.oldPrice) || 0,
+      newPrice: Number(product.newPrice),
+      description: product.description,
+      images: imageUrls,
+      video: videoUrl,
+      status: product.status || 'available',
+      createdAt: new Date().toISOString()
+    };
 
-      console.log('Saving to Firestore:', newProduct); // Debug log
-      const docRef = await addDoc(collection(db, 'products'), newProduct);
-      console.log('Product saved with ID:', docRef.id); // Debug log
-      
-      return { ...newProduct, id: docRef.id };
-    } catch (e) {
-      console.error('Error adding product:', e);
-      throw e;
-    }
+    // Race addDoc against a 10s timeout so the UI never hangs
+    const docRef = await Promise.race([
+      addDoc(collection(db, 'products'), newProduct),
+      new Promise((_, reject) =>
+        setTimeout(() => reject(new Error('Firestore timeout')), 10000)
+      )
+    ]);
+
+    return { ...newProduct, id: docRef.id };
   };
 
   const editProduct = async (id, updates) => {
-    try {
-      const productId = String(id);
-      let imageUrls = updates.images || [];
-      let videoUrl = updates.video || null;
+    const productId = String(id);
+    let imageUrls = updates.images || [];
+    let videoUrl = updates.video || null;
 
-      // Upload any new base64 images
-      const hasNewImages = imageUrls.some(img => img && img.startsWith('data:'));
-      if (hasNewImages) {
-        imageUrls = await uploadImages(imageUrls);
-      }
+    // Upload any new base64 images
+    const hasNewImages = imageUrls.some(img => img && img.startsWith('data:'));
+    if (hasNewImages) {
+      imageUrls = await uploadImages(imageUrls);
+    }
 
-      // Upload new video if base64
-      if (videoUrl && videoUrl.startsWith('data:')) {
-        videoUrl = await uploadVideo(videoUrl);
-      }
+    // Upload new video if base64
+    if (videoUrl && videoUrl.startsWith('data:')) {
+      videoUrl = await uploadVideo(videoUrl);
+    }
 
-      await updateDoc(doc(db, 'products', productId), {
+    await Promise.race([
+      updateDoc(doc(db, 'products', productId), {
         ...updates,
         images: imageUrls,
         video: videoUrl,
         updatedAt: new Date().toISOString()
-      });
-    } catch (e) {
-      console.error('Error editing product:', e);
-      throw e;
-    }
+      }),
+      new Promise((_, reject) =>
+        setTimeout(() => reject(new Error('Firestore timeout')), 10000)
+      )
+    ]);
   };
 
   const deleteProduct = async (id) => {
-    try {
-      await deleteDoc(doc(db, 'products', String(id)));
-    } catch (e) {
-      console.error('Error deleting product:', e);
-    }
+    await Promise.race([
+      deleteDoc(doc(db, 'products', String(id))),
+      new Promise((_, reject) =>
+        setTimeout(() => reject(new Error('Firestore timeout')), 10000)
+      )
+    ]);
   };
 
   const getAvailableProducts = () =>
