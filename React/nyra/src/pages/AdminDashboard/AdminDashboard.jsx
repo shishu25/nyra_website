@@ -245,7 +245,7 @@ export default function AdminDashboard() {
       setShowDressModal(false);
     } catch (err) {
       console.error('Error saving product:', err);
-      toast.error('Failed to save product. Please try again.');
+      toast.error(`Failed: ${err.message || 'Unknown error. Check console.'}`);
     } finally {
       setIsSubmitting(false);
     }

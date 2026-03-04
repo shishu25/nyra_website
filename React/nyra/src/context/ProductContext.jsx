@@ -99,70 +99,79 @@ export function ProductProvider({ children }) {
   };
 
   const addProduct = async (product) => {
-    // Upload images to Cloudinary
-    const imageUrls = await uploadImages(product.images || []);
-    // Upload video if present
-    const videoUrl = await uploadVideo(product.video);
+    try {
+      // Step 1: Upload images to Cloudinary
+      console.log('Step 1: Uploading images to Cloudinary...');
+      const imageUrls = await uploadImages(product.images || []);
+      console.log('Images uploaded:', imageUrls);
 
-    const newProduct = {
-      name: product.name,
-      category: product.category,
-      oldPrice: Number(product.oldPrice) || 0,
-      newPrice: Number(product.newPrice),
-      description: product.description,
-      images: imageUrls,
-      video: videoUrl,
-      status: product.status || 'available',
-      createdAt: new Date().toISOString()
-    };
+      // Step 2: Upload video if present
+      console.log('Step 2: Uploading video (if any)...');
+      const videoUrl = await uploadVideo(product.video);
+      console.log('Video uploaded:', videoUrl);
 
-    // Race addDoc against a 10s timeout so the UI never hangs
-    const docRef = await Promise.race([
-      addDoc(collection(db, 'products'), newProduct),
-      new Promise((_, reject) =>
-        setTimeout(() => reject(new Error('Firestore timeout')), 10000)
-      )
-    ]);
+      const newProduct = {
+        name: product.name,
+        category: product.category,
+        oldPrice: Number(product.oldPrice) || 0,
+        newPrice: Number(product.newPrice),
+        description: product.description,
+        images: imageUrls,
+        video: videoUrl || null,
+        status: product.status || 'available',
+        createdAt: new Date().toISOString()
+      };
 
-    return { ...newProduct, id: docRef.id };
+      // Step 3: Save to Firestore
+      console.log('Step 3: Saving to Firestore...', newProduct);
+      const docRef = await addDoc(collection(db, 'products'), newProduct);
+      console.log('Product saved! Doc ID:', docRef.id);
+
+      return { ...newProduct, id: docRef.id };
+    } catch (error) {
+      console.error('addProduct failed:', error);
+      throw error;
+    }
   };
 
   const editProduct = async (id, updates) => {
-    const productId = String(id);
-    let imageUrls = updates.images || [];
-    let videoUrl = updates.video || null;
+    try {
+      const productId = String(id);
+      let imageUrls = updates.images || [];
+      let videoUrl = updates.video || null;
 
-    // Upload any new base64 images
-    const hasNewImages = imageUrls.some(img => img && img.startsWith('data:'));
-    if (hasNewImages) {
-      imageUrls = await uploadImages(imageUrls);
-    }
+      // Upload any new base64 images
+      const hasNewImages = imageUrls.some(img => img && img.startsWith('data:'));
+      if (hasNewImages) {
+        imageUrls = await uploadImages(imageUrls);
+      }
 
-    // Upload new video if base64
-    if (videoUrl && videoUrl.startsWith('data:')) {
-      videoUrl = await uploadVideo(videoUrl);
-    }
+      // Upload new video if base64
+      if (videoUrl && videoUrl.startsWith('data:')) {
+        videoUrl = await uploadVideo(videoUrl);
+      }
 
-    await Promise.race([
-      updateDoc(doc(db, 'products', productId), {
+      await updateDoc(doc(db, 'products', productId), {
         ...updates,
         images: imageUrls,
         video: videoUrl,
         updatedAt: new Date().toISOString()
-      }),
-      new Promise((_, reject) =>
-        setTimeout(() => reject(new Error('Firestore timeout')), 10000)
-      )
-    ]);
+      });
+      console.log('Product updated:', productId);
+    } catch (error) {
+      console.error('editProduct failed:', error);
+      throw error;
+    }
   };
 
   const deleteProduct = async (id) => {
-    await Promise.race([
-      deleteDoc(doc(db, 'products', String(id))),
-      new Promise((_, reject) =>
-        setTimeout(() => reject(new Error('Firestore timeout')), 10000)
-      )
-    ]);
+    try {
+      await deleteDoc(doc(db, 'products', String(id)));
+      console.log('Product deleted:', id);
+    } catch (error) {
+      console.error('deleteProduct failed:', error);
+      throw error;
+    }
   };
 
   const getAvailableProducts = () =>
